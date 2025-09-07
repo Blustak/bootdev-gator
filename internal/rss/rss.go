@@ -3,10 +3,15 @@ package rss
 import (
 	"context"
 	"encoding/xml"
+	"fmt"
 	"html"
 	"io"
 	"net/http"
 )
+
+type PrintableFeed interface {
+    String() string
+}
 
 type RSSFeed struct {
     Channel struct{
@@ -48,6 +53,18 @@ func fetchFeed(ctx context.Context,feedURL string) (*RSSFeed,error){
     return &feed,nil
 
 
+}
+
+func (f *RSSFeed) String() string {
+    out := fmt.Sprintf(
+        "Title:%s\nDescription:%s\n\nItems:\n",
+        f.Channel.Title,
+        f.Channel.Description,
+)
+    for _,item := range f.Channel.Item {
+        out += fmt.Sprintf("\tTitle:%s\n", item.Title)
+    }
+    return out
 }
 
 func NewFeed(ctx context.Context,feedURL string) (*RSSFeed,error) {

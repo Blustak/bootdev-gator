@@ -90,6 +90,27 @@ func main() {
 
 }
 
+func scrapeFeeds(s *state) error {
+    feed, err := s.db.GetNextFeedToFetch(context.Background())
+    if err != nil {
+        return err
+    }
+    nowTime := time.Now()
+    if err := s.db.MarkFeedFetched(context.Background(),database.MarkFeedFetchedParams{
+        UpdatedAt: nowTime,
+        LastFetchedAt: sql.NullTime{
+            Time: nowTime,
+            Valid: true,
+        },
+        ID: feed.ID,
+    }); err != nil {
+        return err
+    }
+        fetchedFeed,err := rss.NewFeed(context.Background(),feed.Url)
+        fmt.Printf("%s\n",fetchedFeed.String())
+        return nil
+}
+
 func handlerLogin(s *state, cmd command) error {
 	if len(cmd.args) == 0 {
 		return fmt.Errorf("login requires a username")
@@ -158,13 +179,19 @@ func handlerReset(s *state, cmd command) error {
 }
 
 func handlerAgg(s *state, cmd command) error {
-	url := "https://www.wagslane.dev/index.xml"
-	feed, err := rss.NewFeed(context.Background(), url)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%v\n", feed)
-	return nil
+    if err := checkArgs(1,cmd); err != nil {
+        return err
+    }
+    interval, err := time.ParseDuration(cmd.args[0])
+    if err != nil {
+        return err
+    }
+    fmt.Printf("Collecting feeds every %s\n",interval.String())
+    ticker := time.NewTicker(interval)
+    for ; ; <-ticker.C {
+        scrapeFeeds(s)
+    }
+
 
 }
 
