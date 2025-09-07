@@ -289,11 +289,3 @@ func checkArgs(expectedLength int, cmd command) error {
 	}
 	return nil
 }
-
-func getCurrentUser(s *state) (*database.User, error) {
-	user, err := s.db.GetUser(context.Background(), s.userConfig.CurrentUserName)
-	if err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
