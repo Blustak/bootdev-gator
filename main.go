@@ -73,6 +73,7 @@ func main() {
 	cmds.register("feeds", handlerFeeds)
 	cmds.register("follow", middlewareLoggedIn(handlerFollow))
     cmds.register("following",middlewareLoggedIn(handlerFollowing))
+    cmds.register("unfollow",middlewareLoggedIn(handlerUnfollow))
 
 	if len(os.Args) < 2 {
 		fmt.Println("error: not enough arguments")
@@ -190,6 +191,24 @@ func handlerFeeds(s *state, cmd command) error {
 }
 
 // logged in functions
+
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+    if err := checkArgs(1,cmd); err != nil {
+        return err
+    }
+    feed, err := s.db.GetFeedByUrl(context.Background(),cmd.args[0])
+    if err != nil {
+        return err
+    }
+    if err := s.db.UnfollowFeed(context.Background(),database.UnfollowFeedParams{
+        UserID: user.ID,
+        FeedID: feed.ID,
+    }); err != nil {
+        return err
+    }
+    return nil
+}
+
 func handlerFollow(s *state, cmd command, user database.User) error {
 	if err := checkArgs(1, cmd); err != nil {
 		return err
