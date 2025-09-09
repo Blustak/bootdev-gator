@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -74,6 +75,7 @@ func main() {
 	cmds.register("follow", middlewareLoggedIn(handlerFollow))
     cmds.register("following",middlewareLoggedIn(handlerFollowing))
     cmds.register("unfollow",middlewareLoggedIn(handlerUnfollow))
+    cmds.register("browse",middlewareLoggedIn(handlerBrowse))
 
 	if len(os.Args) < 2 {
 		fmt.Println("error: not enough arguments")
@@ -107,9 +109,36 @@ func scrapeFeeds(s *state) error {
         return err
     }
         fetchedFeed,err := rss.NewFeed(context.Background(),feed.Url)
-        fmt.Printf("%s\n",fetchedFeed.String())
+        if err != nil {
+            return err
+        }
+        for _,post := range fetchedFeed.Channel.Item {
+            nowTime := time.Now()
+            pubDate, err := parseDate(post.PubDate)
+            if err != nil {
+                return err
+            }
+            createdPost,err := s.db.CreatePost(
+                context.Background(),
+                database.CreatePostParams{
+                    ID: uuid.New(),
+                    CreatedAt: nowTime,
+                    UpdatedAt: nowTime,
+                    Title:post.Title,
+                    Description: sql.NullString{String: post.Description, Valid: post.Description != ""},
+                    Url:post.Link,
+                    PublishedAt: sql.NullTime{Time: pubDate,Valid: pubDate != time.Time{}},
+                    FeedID: feed.ID,
+                },
+            )
+            if err != nil {
+                return err
+            }
+            fmt.Printf("%v\n",createdPost)
+        }
         return nil
 }
+
 
 func handlerLogin(s *state, cmd command) error {
 	if len(cmd.args) == 0 {
@@ -189,7 +218,10 @@ func handlerAgg(s *state, cmd command) error {
     fmt.Printf("Collecting feeds every %s\n",interval.String())
     ticker := time.NewTicker(interval)
     for ; ; <-ticker.C {
-        scrapeFeeds(s)
+        err := scrapeFeeds(s)
+        if err != nil {
+            return err
+        }
     }
 
 
@@ -295,6 +327,44 @@ func handlerAddFeed(s *state, cmd command, user database.User ) error {
 	fmt.Printf("%v\n", feed)
 	return nil
 
+}
+
+func handlerBrowse(s *state, cmd command, user database.User) error {
+    var limit int32
+    if err := checkArgs(1,cmd); err != nil {
+        limit = 2
+    } else {
+        x,err := strconv.ParseInt(cmd.args[0],10,32)
+        if err != nil {
+            return err
+        }
+        limit = int32(x)
+    }
+    posts, err := s.db.GetPostsForUser(context.Background(),database.GetPostsForUserParams{
+        UserID: user.ID,
+        Limit: limit,
+    })
+    if err != nil {
+        return err
+    }
+    for _,p := range posts {
+        fmt.Printf("%v\n",p)
+    }
+    return nil
+}
+
+func parseDate(d string) (time.Time,error) {
+    date,err := time.Parse(time.DateTime,d)
+    if err == nil {
+        return date,nil
+    }
+
+    date,err = time.Parse(time.RFC1123Z,d)
+    if err == nil {
+        return date,nil
+    }
+
+    return time.Time{},fmt.Errorf("unkown date format:%s",d)
 }
 
 func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
